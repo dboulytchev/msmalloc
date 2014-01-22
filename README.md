@@ -1,7 +1,7 @@
 msmalloc
 ========
 
-Doug Lee's malloc + mark/sweep functionality
+Doug Lea's malloc + mark/sweep functionality
 
 Instructions:
 =============
