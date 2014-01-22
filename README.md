@@ -1,4 +1,4 @@
 msmalloc
 ========
 
-Doug Lee's dl malloc + mark/sweep functionality
+Doug Lee's malloc + mark/sweep functionality
