@@ -1,8 +1,8 @@
+ACLOCAL_AMFLAGS = -I m4
 AUTOMAKE_OPTIONS = foreign
 
-CFLAGS = -fPIC -O3
-LDFLAGS = -lm
+AM_CFLAGS = -fPIC -O3
 
-lib_LIBRARIES = libmsmalloc.a
-include_HEADERS = mark.h
-libmsmalloc_a_SOURCES = malloc.c mark.h
+lib_LTLIBRARIES = libmsmalloc.la
+include_HEADERS = msmalloc.h
+libmsmalloc_la_SOURCES = malloc.c mark.h
