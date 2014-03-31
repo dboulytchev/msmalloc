@@ -4537,7 +4537,7 @@ static void* tmalloc_small(mstate m, size_t nb) {
 #if !ONLY_MSPACES
 
 void* dlmalloc(size_t bytes) {
-//  printf("dlmalloc invoked %zu\n", bytes);
+ // printf("dlmalloc invoked %zu\n", bytes);
   /*
      Basic algorithm:
      If a small request (< 256 bytes minus per-chunk overhead):
@@ -6320,6 +6320,14 @@ DLMALLOC_EXPORT size_t sweep() {
   }
   // printf ("end\n");
   // fflush(stdout);
+}
+
+int isHeapPointer (void* p) {
+  mstate m = gm;
+  if (is_initialized(m)) {
+    return segment_holding(m, p) != 0;
+  }
+  return 0;
 }
 
 void printDlMallocInfo (void) {

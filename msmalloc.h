@@ -9,4 +9,5 @@ size_t get_mark (void*);
 void sweep (void);
 #endif
 
+int isHeapPointer (void* p);
 void printDlMallocInfo (void);
