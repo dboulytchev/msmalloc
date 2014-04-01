@@ -1604,6 +1604,7 @@ unsigned char _BitScanReverse(unsigned long *index, unsigned long mask);
 #define SIZE_T_ONE          ((size_t)1)
 #define SIZE_T_TWO          ((size_t)2)
 #define SIZE_T_FOUR         ((size_t)4)
+#define SIZE_T_EIGHT        ((size_t)8)
 #define TWO_SIZE_T_SIZES    (SIZE_T_SIZE<<1)
 #define FOUR_SIZE_T_SIZES   (SIZE_T_SIZE<<2)
 #define SIX_SIZE_T_SIZES    (FOUR_SIZE_T_SIZES+TWO_SIZE_T_SIZES)
@@ -2244,8 +2245,9 @@ typedef unsigned int flag_t;           /* The type of various bit flag sets */
 #define PINUSE_BIT          (SIZE_T_ONE)
 #define CINUSE_BIT          (SIZE_T_TWO)
 #define FLAG4_BIT           (SIZE_T_FOUR)
+#define FLAG8_BIT	    (SIZE_T_EIGHT)
 #define INUSE_BITS          (PINUSE_BIT|CINUSE_BIT)
-#define FLAG_BITS           (PINUSE_BIT|CINUSE_BIT|FLAG4_BIT)
+#define FLAG_BITS           (PINUSE_BIT|CINUSE_BIT|FLAG4_BIT|FLAG8_BIT)
 
 /* Head value for fenceposts */
 #define FENCEPOST_HEAD      (INUSE_BITS|SIZE_T_SIZE)
@@ -2254,6 +2256,7 @@ typedef unsigned int flag_t;           /* The type of various bit flag sets */
 #define cinuse(p)           ((p)->head & CINUSE_BIT)
 #define pinuse(p)           ((p)->head & PINUSE_BIT)
 #define flag4inuse(p)       ((p)->head & FLAG4_BIT)
+#define flag8inuse(p)       ((p)->head & FLAG8_BIT)
 #define is_inuse(p)         (((p)->head & INUSE_BITS) != PINUSE_BIT)
 #define is_mmapped(p)       (((p)->head & INUSE_BITS) == 0)
 
@@ -2262,6 +2265,8 @@ typedef unsigned int flag_t;           /* The type of various bit flag sets */
 #define clear_pinuse(p)     ((p)->head &= ~PINUSE_BIT)
 #define set_flag4(p)        ((p)->head |= FLAG4_BIT)
 #define clear_flag4(p)      ((p)->head &= ~FLAG4_BIT)
+#define set_flag8(p)        ((p)->head |= FLAG8_BIT)
+#define clear_flag8(p)      ((p)->head &= ~FLAG8_BIT)
 
 /* Treat space at ptr +/- offset as a chunk */
 #define chunk_plus_offset(p, s)  ((mchunkptr)(((char*)(p)) + (s)))
@@ -4537,7 +4542,7 @@ static void* tmalloc_small(mstate m, size_t nb) {
 #if !ONLY_MSPACES
 
 void* dlmalloc(size_t bytes) {
- // printf("dlmalloc invoked %zu\n", bytes);
+//  printf("dlmalloc invoked %zu\n", bytes);
   /*
      Basic algorithm:
      If a small request (< 256 bytes minus per-chunk overhead):
@@ -4667,6 +4672,10 @@ void* dlmalloc(size_t bytes) {
 
   postaction:
     POSTACTION(gm);
+    mchunkptr chunk = mem2chunk(mem);
+    /// is_automatic ? { set_flag4(chunk); clear_flag8(chunk)} : { clear_flag4(chunk); clear_flag8(chunk) } ;
+    clear_flag4(chunk);
+    clear_flag8(chunk);
     return mem;
   }
   
@@ -6280,24 +6289,45 @@ History:
 
 */
 
-DLMALLOC_EXPORT void mark(void* pointer) {
+DLMALLOC_EXPORT void mark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
+//  if (flag4inuse(chunk))
+    set_flag8(chunk);
+}
+
+DLMALLOC_EXPORT void unmark (void * pointer) {
+  mchunkptr chunk = mem2chunk(pointer);
+//  if (flag4inuse(chunk))
+    clear_flag8(chunk);
+}
+
+DLMALLOC_EXPORT size_t get_mark (void * pointer) {
+  mchunkptr chunk = mem2chunk(pointer);
+//  if (flag4inuse(chunk)) {
+  return flag8inuse(chunk) != 0;
+//  }
+//  return 0;
+}
+
+/// automatic object to manual
+/// bits: 1x -> 0x
+void trancfer_to_manual_object (void * p) {
+  mchunkptr chunk = mem2chunk(p);
+  clear_flag4(chunk);
+//  set_flag8(chunk);
+}
+
+/// bits: 0x -> 1x
+void trancfer_to_automatic_objects (void * p) {
+  mchunkptr chunk = mem2chunk(p);
   set_flag4(chunk);
-}
-
-DLMALLOC_EXPORT void unmark(void* pointer) {
-  mchunkptr chunk = mem2chunk(pointer);
-  clear_flag4(chunk); 
-}
-
-DLMALLOC_EXPORT size_t get_mark(void* pointer) {
-  mchunkptr chunk = mem2chunk(pointer);
-  return flag4inuse(chunk);
+//  clear_flag8(chunk);
 }
 
 DLMALLOC_EXPORT size_t sweep() {
   // printf ("sweep begin ... ");
   // fflush(stdout);
+  int n = 0;
   mstate m = gm;
   if (is_initialized(m)) {
     msegmentptr s = &m->seg;
@@ -6306,18 +6336,21 @@ DLMALLOC_EXPORT size_t sweep() {
       while (segment_holds(s, q) &&
              q < m->top && q->head != FENCEPOST_HEAD) {
         // printf("chunk: %p\n", q);
-        if (!flag4inuse(q) && is_inuse(q)) {
+	// printf("%i %i \n", flag4inuse(q), flag8inuse(q));
+        if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
             free(chunk2mem(q));
             // printf("free that chunk\n");
+	    n++;
         }
         if (q < m->top && q->head != FENCEPOST_HEAD) {
-            clear_flag4(q);
+            clear_flag8(q);
             q = next_chunk(q);
         }
       }
       s = s->next;
     }
   }
+  printf("Count of chunk was freed: %i\n", n);
   // printf ("end\n");
   // fflush(stdout);
 }
