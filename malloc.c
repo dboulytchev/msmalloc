@@ -6291,42 +6291,33 @@ History:
 
 DLMALLOC_EXPORT void mark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
-//  if (flag4inuse(chunk))
     set_flag8(chunk);
 }
 
 DLMALLOC_EXPORT void unmark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
-//  if (flag4inuse(chunk))
     clear_flag8(chunk);
 }
 
 DLMALLOC_EXPORT size_t get_mark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
-//  if (flag4inuse(chunk)) {
   return flag8inuse(chunk) != 0;
-//  }
-//  return 0;
 }
 
 /// automatic object to manual
 /// bits: 1x -> 0x
-void trancfer_to_manual_object (void * p) {
+void transfer_to_manual_object (void * p) {
   mchunkptr chunk = mem2chunk(p);
   clear_flag4(chunk);
-//  set_flag8(chunk);
 }
 
 /// bits: 0x -> 1x
-void trancfer_to_automatic_objects (void * p) {
+void transfer_to_automatic_objects (void * p) {
   mchunkptr chunk = mem2chunk(p);
   set_flag4(chunk);
-//  clear_flag8(chunk);
 }
 
-DLMALLOC_EXPORT size_t sweep() {
-  // printf ("sweep begin ... ");
-  // fflush(stdout);
+DLMALLOC_EXPORT size_t sweep () {
   int n = 0;
   mstate m = gm;
   if (is_initialized(m)) {
@@ -6351,11 +6342,9 @@ DLMALLOC_EXPORT size_t sweep() {
     }
   }
   printf("Count of chunk was freed: %i\n", n);
-  // printf ("end\n");
-  // fflush(stdout);
 }
 
-int isHeapPointer (void* p) {
+int is_heap_pointer (void * p) {
   mstate m = gm;
   if (is_initialized(m)) {
     return segment_holding(m, p) != 0;
