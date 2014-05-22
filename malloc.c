@@ -6289,14 +6289,15 @@ History:
 
 */
 
-DLMALLOC_EXPORT void mark (void * pointer) {
+DLMALLOC_EXPORT void * mark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
-    set_flag8(chunk);
+  set_flag8(chunk);
+  return (void *)chunk;
 }
 
 DLMALLOC_EXPORT void unmark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
-    clear_flag8(chunk);
+  clear_flag8(chunk);
 }
 
 DLMALLOC_EXPORT size_t get_mark (void * pointer) {
@@ -6318,7 +6319,7 @@ void transfer_to_automatic_objects (void * p) {
 }
 
 DLMALLOC_EXPORT size_t sweep () {
-  int n = 0;
+//   int n = 0;
   mstate m = gm;
   if (is_initialized(m)) {
     msegmentptr s = &m->seg;
@@ -6331,7 +6332,7 @@ DLMALLOC_EXPORT size_t sweep () {
         if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
             free(chunk2mem(q));
             // printf("free that chunk\n");
-	    n++;
+// 	    n++;
         }
         if (q < m->top && q->head != FENCEPOST_HEAD) {
             clear_flag8(q);
@@ -6341,7 +6342,7 @@ DLMALLOC_EXPORT size_t sweep () {
       s = s->next;
     }
   }
-  printf("Count of chunk was freed: %i\n", n);
+//   printf("Count of chunk was freed: %i\n", n);
 }
 
 int is_heap_pointer (void * p) {
