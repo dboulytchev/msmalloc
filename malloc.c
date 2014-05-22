@@ -6289,10 +6289,9 @@ History:
 
 */
 
-DLMALLOC_EXPORT void * mark (void * pointer) {
+DLMALLOC_EXPORT void mark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
   set_flag8(chunk);
-  return (void *)chunk;
 }
 
 DLMALLOC_EXPORT void unmark (void * pointer) {

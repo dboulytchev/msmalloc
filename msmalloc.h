@@ -6,7 +6,7 @@
 #endif
 
 extern "C"{
-	void * mark (void *);
+	void mark (void *);
 	void unmark (void *);
 	size_t get_mark (void *);
 	void sweep (void);
