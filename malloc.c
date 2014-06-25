@@ -522,6 +522,14 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 */
 
 /* Version identifier to allow people to support multiple versions */
+
+// #define DLMALLOC_WRAPPED 1
+// #define MORECORE constMoreCore
+#define MORECORE_CANNOT_TRIM
+#define MALLOC_ALIGNMENT ((size_t) (16))
+
+#define HAVE_MMAP 0
+
 #ifndef DLMALLOC_VERSION
 #define DLMALLOC_VERSION 20806
 #endif /* DLMALLOC_VERSION */
@@ -529,7 +537,7 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 #ifndef DLMALLOC_EXPORT
 #define DLMALLOC_EXPORT extern
 #endif
-
+#include <stdarg.h> 
 #ifndef WIN32
 #ifdef _WIN32
 #define WIN32 1
@@ -634,7 +642,7 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 #define INSECURE 0
 #endif  /* INSECURE */
 #ifndef MALLOC_INSPECT_ALL
-#define MALLOC_INSPECT_ALL 0
+#define MALLOC_INSPECT_ALL 1 //0
 #endif  /* MALLOC_INSPECT_ALL */
 #ifndef HAVE_MMAP
 #define HAVE_MMAP 1
@@ -752,7 +760,9 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 */
 
 /* #define HAVE_USR_INCLUDE_MALLOC_H */
-
+#include <pthread.h>
+#include <time.h>
+#include <stdlib.h>
 #ifdef HAVE_USR_INCLUDE_MALLOC_H
 #include "/usr/include/malloc.h"
 #else /* HAVE_USR_INCLUDE_MALLOC_H */
@@ -811,11 +821,16 @@ extern "C" {
 #if !ONLY_MSPACES
 
 /* ------------------- Declarations of public routines ------------------- */
-
+#define invokation_debug 0
 #ifndef USE_DL_PREFIX
 #define dlcalloc               calloc
 #define dlfree                 free
-#define dlmalloc               malloc
+// #define dlmalloc               malloc
+#ifndef DLMALLOC_WRAPPED
+  #define dlmalloc             malloc
+#else
+  #define malloc_wrapper       malloc
+#endif
 #define dlmemalign             memalign
 #define dlposix_memalign       posix_memalign
 #define dlrealloc              realloc
@@ -851,6 +866,14 @@ extern "C" {
   maximum supported value of n differs across systems, but is in all
   cases less than the maximum representable value of a size_t.
 */
+void* constMoreCore(int);
+void* malloc_space_based(size_t);
+void* timed_malloc(size_t);
+void* no_space_malloc(size_t);
+#include <stdio.h>
+// void gc() {printf("gc\n"); fflush(stdout);}
+void gc (void);
+
 DLMALLOC_EXPORT void* dlmalloc(size_t);
 
 /*
@@ -1449,7 +1472,7 @@ DLMALLOC_EXPORT int mspace_mallopt(int, int);
 #ifndef assert
 #define assert(x)
 #endif
-#define DEBUG 0
+#define DEBUG 1 //0
 #endif /* DEBUG */
 #if !defined(WIN32) && !defined(LACKS_TIME_H)
 #include <time.h>        /* for magic initialization */
@@ -4542,7 +4565,10 @@ static void* tmalloc_small(mstate m, size_t nb) {
 #if !ONLY_MSPACES
 
 void* dlmalloc(size_t bytes) {
-//  printf("dlmalloc invoked %zu\n", bytes);
+#ifdef DEBUGE_MODE
+  printf("dlmalloc invoked %zu\n", bytes);
+  fflush(stdout);
+#endif
   /*
      Basic algorithm:
      If a small request (< 256 bytes minus per-chunk overhead):
@@ -4672,10 +4698,6 @@ void* dlmalloc(size_t bytes) {
 
   postaction:
     POSTACTION(gm);
-    mchunkptr chunk = mem2chunk(mem);
-    /// is_automatic ? { set_flag4(chunk); clear_flag8(chunk)} : { clear_flag4(chunk); clear_flag8(chunk) } ;
-    clear_flag4(chunk);
-    clear_flag8(chunk);
     return mem;
   }
   
@@ -4690,7 +4712,6 @@ void dlfree(void* mem) {
      free chunks, if they exist, and then place in a bin.  Intermixed
      with special cases for top, dv, mmapped chunks, and usage errors.
   */
-
   if (mem != 0) {
     mchunkptr p  = mem2chunk(mem);
 #if FOOTERS
@@ -6289,6 +6310,12 @@ History:
 
 */
 
+long long HEAP_SIZE = 10000; 
+int HEAP_USED = 0;
+static void *sbrk_top = 0;
+void* heap_begin = 0;
+int was_gc = 0;
+
 DLMALLOC_EXPORT void mark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
   set_flag8(chunk);
@@ -6317,32 +6344,55 @@ void transfer_to_automatic_objects (void * p) {
   set_flag4(chunk);
 }
 
-DLMALLOC_EXPORT size_t sweep () {
-//   int n = 0;
-  mstate m = gm;
-  if (is_initialized(m)) {
-    msegmentptr s = &m->seg;
-    while (s != 0) {
-      mchunkptr q = align_as_chunk(s->base);
-      while (segment_holds(s, q) &&
-             q < m->top && q->head != FENCEPOST_HEAD) {
-        // printf("chunk: %p\n", q);
-	// printf("%i %i \n", flag4inuse(q), flag8inuse(q));
-        if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
-            free(chunk2mem(q));
-            // printf("free that chunk\n");
-// 	    n++;
+#ifdef DEBUGE_MODE
+    DLMALLOC_EXPORT size_t sweep () {
+    int n = 0;
+    mstate m = gm;
+    if (is_initialized(m)) {
+      msegmentptr s = &m->seg;
+      while (s != 0) {
+        mchunkptr q = align_as_chunk(s->base);
+        while (segment_holds(s, q) &&
+               q < m->top && q->head != FENCEPOST_HEAD) {
+          printf("chunk: %p\n", q); fflush(stdout);
+          printf("%i %i \n", flag4inuse(q), flag8inuse(q));
+          if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
+              free(chunk2mem(q));
+              printf("free that chunk\n"); fflush(stdout);
+              n++;
+          }
+          if (q < m->top && q->head != FENCEPOST_HEAD) {
+              clear_flag8(q);
+              q = next_chunk(q);
+          }
         }
-        if (q < m->top && q->head != FENCEPOST_HEAD) {
-            clear_flag8(q);
-            q = next_chunk(q);
-        }
+        s = s->next;
       }
-      s = s->next;
+    }
+    printf("Count of chunk was freed: %i\n", n); fflush(stdout);
+  }
+#else
+DLMALLOC_EXPORT size_t sweep () {
+    mstate m = gm;
+    if (is_initialized(m)) {
+      msegmentptr s = &m->seg;
+      while (s != 0) {
+        mchunkptr q = align_as_chunk(s->base);
+        while (segment_holds(s, q) &&
+               q < m->top && q->head != FENCEPOST_HEAD) {
+          if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
+              free(chunk2mem(q));
+          }
+          if (q < m->top && q->head != FENCEPOST_HEAD) {
+              clear_flag8(q);
+              q = next_chunk(q);
+          }
+        }
+        s = s->next;
+      }
     }
   }
-//   printf("Count of chunk was freed: %i\n", n);
-}
+#endif
 
 int is_heap_pointer (void * p) {
   mstate m = gm;
@@ -6358,3 +6408,104 @@ void printDlMallocInfo (void) {
     ml.ordblks, ml.usmblks, ml.uordblks, ml.fordblks
     );
 }
+
+#ifdef DEBUGE_MODE
+  DLMALLOC_EXPORT void * no_space_malloc (size_t size) {
+    printf("no_space_malloc: "); fflush(stdout);
+    if (size == 0) {
+      printf("NULL\n"); fflush(stdout);
+      return NULL;
+    }
+    printf("not NULL "); fflush(stdout);
+    int space =  mallinfo().uordblks + mallinfo().fordblks;
+    printf("space: %i ", space); fflush(stdout);
+    void* res = dlmalloc(size);
+    if (res) {
+      printf("return res: %p\n", res); fflush(stdout);
+      return res;
+    }
+    printf("res: %p ", res); fflush(stdout);
+    gc();
+    printf("p: "); fflush(stdout);
+    void* p =  dlmalloc(size);
+    printf("%p; ", p); fflush(stdout);
+    
+    while (!p) {
+      printf("%p ", p); fflush(stdout);
+      HEAP_SIZE += HEAP_SIZE;
+      p = dlmalloc(size);
+    }
+    return p; 
+  }
+#else
+  DLMALLOC_EXPORT void * no_space_malloc (size_t size) {
+    if (size == 0) {
+      return NULL;
+    }
+    int space =  mallinfo().uordblks + mallinfo().fordblks;
+    void* res = dlmalloc(size);
+    if (res) {
+      return res;
+    }
+    printf("res: %p; call gc ", res); fflush(stdout);
+    gc();
+    void* p =  dlmalloc(size);
+
+    while (!p) {
+      HEAP_SIZE += HEAP_SIZE;
+      p = dlmalloc(size);
+    }
+    return p; 
+  }
+#endif
+
+static double threshold = 0.75;
+#ifdef DEBUGE_MODE
+  DLMALLOC_EXPORT void * space_based_malloc (size_t size) {
+    printf("space_based_malloc: \n"); fflush(stdout);
+    if (size == 0) {
+        return NULL;
+    }
+    struct mallinfo inf = mallinfo();
+    int allocated_size = inf.uordblks;
+    int gc_invoked = 0;
+    if (allocated_size > threshold * HEAP_SIZE && HEAP_SIZE > 0) {
+        gc();
+        gc_invoked = 1;
+    }
+    void* res = dlmalloc(size);
+    if (!res && !gc_invoked) {
+        gc();
+        res = dlmalloc(size);
+    }
+    while (!res) {
+        HEAP_SIZE *= 2;
+        res = dlmalloc(size);
+    }
+    return res;
+  }
+#else
+  DLMALLOC_EXPORT void * space_based_malloc (size_t size) {
+      if (size == 0) {
+          return NULL;
+      }
+      struct mallinfo inf = mallinfo();
+      int allocated_size = inf.uordblks;
+      int gc_invoked = 0;
+      if (allocated_size > threshold * HEAP_SIZE && HEAP_SIZE > 0) {
+          gc();
+          gc_invoked = 1;
+      }
+      void* res = dlmalloc(size);
+      if (!res && !gc_invoked) {
+          gc();
+          res = dlmalloc(size);
+      }
+      while (!res) {
+          HEAP_SIZE *= 2;
+          res = dlmalloc(size);
+      }
+      // gc();
+      return res;
+  }
+#endif
