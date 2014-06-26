@@ -524,7 +524,7 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 /* Version identifier to allow people to support multiple versions */
 
 // #define DLMALLOC_WRAPPED 1
-#define MORECORE constMoreCore
+// #define MORECORE constMoreCore
 #define MORECORE_CANNOT_TRIM
 #define MALLOC_ALIGNMENT ((size_t) (16))
 
@@ -6311,10 +6311,24 @@ History:
 */
 
 long long HEAP_SIZE = -1; 
-int HEAP_USED = 0;
+long long HEAP_USED = 0;
 static void *sbrk_top = 0;
 void* heap_begin = 0;
 int was_gc = 0;
+
+DLMALLOC_EXPORT void print_invokation_debug(const char * format, ...) {
+  if (!invokation_debug) {
+    return;
+  } else {
+    va_list args;
+    va_start (args, format);
+    struct timeval curtime;
+    gettimeofday(&curtime, NULL);
+    fprintf(stderr, "%d sec %d usec::", curtime.tv_sec, curtime.tv_usec);
+    vfprintf (stderr, format, args);
+    va_end (args);
+  }
+}
 
 DLMALLOC_EXPORT void mark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
@@ -6409,126 +6423,31 @@ void printDlMallocInfo (void) {
     );
 }
 
-#ifdef DEBUGE_MODE
-  DLMALLOC_EXPORT void * no_space_malloc (size_t size) {
-    printf("no_space_malloc: "); fflush(stdout);
-    if (size == 0) {
-      printf("NULL\n"); fflush(stdout);
-      return NULL;
-    }
-    printf("not NULL "); fflush(stdout);
-    int space =  mallinfo().uordblks + mallinfo().fordblks;
-    printf("space: %i ", space); fflush(stdout);
-    void* res = dlmalloc(size);
-    if (res) {
-      printf("return res: %p\n", res); fflush(stdout);
-      return res;
-    }
-    printf("res: %p ", res); fflush(stdout);
-    gc();
-    printf("p: "); fflush(stdout);
-    void* p =  dlmalloc(size);
-    printf("%p; ", p); fflush(stdout);
-    
-    while (!p) {
-      printf("%p ", p); fflush(stdout);
-      HEAP_SIZE += HEAP_SIZE;
-      p = dlmalloc(size);
-    }
-    return p; 
-  }
-#else
-  DLMALLOC_EXPORT void * no_space_malloc (size_t size) {
-    if (size == 0) {
-      return NULL;
-    }
-    int space =  mallinfo().uordblks + mallinfo().fordblks;
-    void* res = dlmalloc(size);
-    if (res) {
-      return res;
-    }
-    printf("res: %p; call gc ", res); fflush(stdout);
-    gc();
-    void* p =  dlmalloc(size);
-
-    while (!p) {
-      HEAP_SIZE += HEAP_SIZE;
-      p = dlmalloc(size);
-    }
-    return p; 
-  }
-#endif
-
-static double threshold = 0.75;
-#ifdef DEBUGE_MODE
-  DLMALLOC_EXPORT void * space_based_malloc (size_t size) {
-    printf("space_based_malloc: \n"); fflush(stdout);
-    if (size == 0) {
-        return NULL;
-    }
-    struct mallinfo inf = mallinfo();
-    int allocated_size = inf.uordblks;
-    int gc_invoked = 0;
-    if (allocated_size > threshold * HEAP_SIZE && HEAP_SIZE > 0) {
-        gc();
-        gc_invoked = 1;
-    }
-    void* res = dlmalloc(size);
-    if (!res && !gc_invoked) {
-        gc();
-        res = dlmalloc(size);
-    }
-    while (!res) {
-        HEAP_SIZE *= 2;
-        res = dlmalloc(size);
-    }
-    return res;
-  }
-#else
-  DLMALLOC_EXPORT void * space_based_malloc (size_t size) {
-      if (size == 0) {
-          return NULL;
-      }
-      struct mallinfo inf = mallinfo();
-      int allocated_size = inf.uordblks;
-      int gc_invoked = 0;
-      if (allocated_size > threshold * HEAP_SIZE && HEAP_SIZE > 0) {
-          gc();
-          gc_invoked = 1;
-      }
-      void* res = dlmalloc(size);
-      if (!res && !gc_invoked) {
-          gc();
-          res = dlmalloc(size);
-      }
-      while (!res) {
-          HEAP_SIZE *= 2;
-          res = dlmalloc(size);
-      }
-      // gc();
-      return res;
-  }
-#endif
-
-/* Custom MORECORE */
-
 DLMALLOC_EXPORT void* constMoreCore(int size) {
   if (HEAP_SIZE == -1) {
     heap_begin = MORECORE_DEFAULT(0);
     //need to set HEAP_SIZE
     char* text = getenv("HEAP_SIZE");
-    if (text) { 
-      HEAP_SIZE = atoll(text);
-    } 
-    if (HEAP_SIZE <= 0) {
-      //set default value
-      HEAP_SIZE = 4096;
-    }
+    // if (text) { 
+    //   HEAP_SIZE = atoll(text);
+    // } 
+    // if (HEAP_SIZE <= 0) {
+    //   //set default value
+    //   HEAP_SIZE = 4096;
+    // }
+    HEAP_SIZE = 50000000;
   }
+#ifdef DEBUGE_MODE
+  print_invokation_debug("Custom morecore invoked, size = %d\n", size);
+#endif
   if (size == 0) {
     return sbrk_top;
   }
   if (size < 0 || HEAP_USED + size > HEAP_SIZE) {
+  #ifdef DEBUGE_MODE
+    print_invokation_debug("baaaaaad request\n");
+    print_invokation_debug("HEAP_USED = %d, size = %d, HEAP_SIZE = %d\n", HEAP_USED, size, HEAP_SIZE);
+  #endif
     return MFAIL;
   }
   void* ptr = MORECORE_DEFAULT(size);
@@ -6538,4 +6457,183 @@ DLMALLOC_EXPORT void* constMoreCore(int size) {
   HEAP_USED += size;
   sbrk_top = ((char*)ptr) + size;
   return ptr;
+}
+
+
+DLMALLOC_EXPORT void* no_space_malloc(size_t size) {
+  if (size == 0) {
+    return NULL;
+  }
+#ifdef DEBUGE_MODE
+  print_invokation_debug("malloc_wrapped invoked, size = %d\n", size);
+  print_invokation_debug("total allocated space = %d\n", mallinfo().uordblks);
+  print_invokation_debug("total free space = %d\n", mallinfo().fordblks);
+  int space =  mallinfo().uordblks + mallinfo().fordblks;
+  print_invokation_debug("total space = %d\n", HEAP_SIZE);
+#endif
+  void* res = dlmalloc(size);
+  if (res) {
+    return res;
+  } 
+#ifdef DEBUGE_MODE
+  print_invokation_debug("gc invoked\n");
+#endif
+  gc();
+#ifdef DEBUGE_MODE
+  print_invokation_debug("gc finished\n");
+#endif
+  void* p =  dlmalloc(size);
+  
+  while (!p) {
+  #ifdef DEBUGE_MODE
+    print_invokation_debug("need to expand the heap\n");
+  #endif
+    HEAP_SIZE += HEAP_SIZE;
+  #ifdef DEBUGE_MODE
+    print_invokation_debug("HEAP SIZE FROM MALLOC = %d", HEAP_SIZE);
+  #endif
+    p = dlmalloc(size);
+  }
+
+  return p; 
+}
+
+static double threshold = 0.75;
+
+DLMALLOC_EXPORT void* space_based_malloc(size_t size) {
+    if (size == 0) {
+        return NULL;
+    }
+    struct mallinfo inf = mallinfo();
+    int allocated_size = inf.uordblks;
+  #ifdef DEBUGE_MODE
+    print_invokation_debug("malloc_wrapped invoked, size = %d\n", size);
+    print_invokation_debug("total allocated space = %d\n", allocated_size);
+    print_invokation_debug("total space = %d\n", inf.uordblks + inf.fordblks);
+    print_invokation_debug("total space = %d\n", HEAP_SIZE);
+  #endif
+    int gc_invoked = 0;
+    if (allocated_size > threshold * HEAP_SIZE && HEAP_SIZE > 0) {
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("gc invoked\n");
+      #endif
+        gc();
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("gc finished\n");
+      #endif
+        gc_invoked = 1;
+    }
+    void* res = dlmalloc(size);
+    if (!res && !gc_invoked) {
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("gc invoked\n");
+      #endif
+        gc();
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("gc finished\n");
+      #endif
+        res = dlmalloc(size);
+    }
+    while (!res) {
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("expanding heap\n");
+      #endif
+        HEAP_SIZE *= 2;
+        res = dlmalloc(size);
+    }
+    return res;
+}
+
+struct timeval prev_malloc_invokation = {-1, -1};
+struct timeval prev_prev_malloc_invokation = {-1, -1};
+//prev_malloc_invokation.tv_sec = -1; 
+//prev_malloc_invokation.tv_nsec = -1;
+
+struct timeval getDiffTime(struct timeval t, struct timeval l) {
+    struct timeval tmp;
+    if (t.tv_usec == -1 || l.tv_usec == -1) {
+      tmp.tv_sec = 0;
+      tmp.tv_usec = 0;
+    }
+    tmp.tv_sec = t.tv_sec - l.tv_sec;
+    tmp.tv_usec = t.tv_usec - l.tv_usec;
+    if (tmp.tv_usec < 0) {
+      tmp.tv_sec--;
+      tmp.tv_usec += 1000000;
+    }
+    return tmp;
+}
+DLMALLOC_EXPORT void* timed_malloc(size_t size) {
+    if (size == 0) {
+        return NULL;
+    }
+    int gc_invoked = 0;
+    struct timeval current_malloc_invokation;
+    gettimeofday(&current_malloc_invokation, NULL);
+    if (prev_prev_malloc_invokation.tv_usec == -1) {
+      prev_prev_malloc_invokation = prev_malloc_invokation;
+      prev_malloc_invokation = current_malloc_invokation;
+
+    } else {
+      struct mallinfo inf = mallinfo();
+      int allocated_size = inf.uordblks;
+    #ifdef DEBUGE_MODE
+      print_invokation_debug("malloc_wrapped invoked, size = %d\n", size);
+      print_invokation_debug("total allocated space = %d\n", allocated_size);
+      print_invokation_debug("total space = %d\n", HEAP_SIZE);
+    #endif
+      struct timeval diff1 = getDiffTime(current_malloc_invokation, prev_malloc_invokation);
+      struct timeval diff2 = getDiffTime(prev_malloc_invokation, prev_prev_malloc_invokation);
+      double T = (diff1.tv_sec*1.0 + diff1.tv_usec*1.0/1000000)/(diff2.tv_sec*1.0 + diff2.tv_usec*1.0/1000000);
+      if (T > 15) {
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("gc invoked\n");
+      #endif
+        gc();
+        gc_invoked = 1;
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("gc finished\n");  
+      #endif
+      }
+      prev_prev_malloc_invokation = prev_malloc_invokation;
+      prev_malloc_invokation = current_malloc_invokation;
+    }
+    
+    void* res = dlmalloc(size);
+    if (!res && !gc_invoked) {
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("gc invoked\n");
+      #endif
+        gc();
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("gc finished\n");
+      #endif
+        res = dlmalloc(size);
+    }
+    while (!res) {
+      #ifdef DEBUGE_MODE
+        print_invokation_debug("expanding heap\n");
+      #endif
+        HEAP_SIZE *= 2;
+        res = dlmalloc(size);
+    }
+    return res; 
+}
+
+size_t l = 0;
+DLMALLOC_EXPORT void* stupid_malloc(size_t size) {
+  if (l > 5000000) {
+    gc();
+    l = 0;
+  }
+  void * res = dlmalloc(size);
+  while (!res) {
+  #ifdef DEBUGE_MODE
+    printf("No memory"); fflush(stdout);
+  #endif
+    gc();
+    res = dlmalloc(size);
+  }
+  l += size;
+  return res;
 }
