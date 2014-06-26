@@ -524,7 +524,7 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 /* Version identifier to allow people to support multiple versions */
 
 // #define DLMALLOC_WRAPPED 1
-// #define MORECORE constMoreCore
+#define MORECORE constMoreCore
 #define MORECORE_CANNOT_TRIM
 #define MALLOC_ALIGNMENT ((size_t) (16))
 
@@ -6310,7 +6310,7 @@ History:
 
 */
 
-long long HEAP_SIZE = 10000; 
+long long HEAP_SIZE = -1; 
 int HEAP_USED = 0;
 static void *sbrk_top = 0;
 void* heap_begin = 0;
@@ -6509,3 +6509,33 @@ static double threshold = 0.75;
       return res;
   }
 #endif
+
+/* Custom MORECORE */
+
+DLMALLOC_EXPORT void* constMoreCore(int size) {
+  if (HEAP_SIZE == -1) {
+    heap_begin = MORECORE_DEFAULT(0);
+    //need to set HEAP_SIZE
+    char* text = getenv("HEAP_SIZE");
+    if (text) { 
+      HEAP_SIZE = atoll(text);
+    } 
+    if (HEAP_SIZE <= 0) {
+      //set default value
+      HEAP_SIZE = 4096;
+    }
+  }
+  if (size == 0) {
+    return sbrk_top;
+  }
+  if (size < 0 || HEAP_USED + size > HEAP_SIZE) {
+    return MFAIL;
+  }
+  void* ptr = MORECORE_DEFAULT(size);
+  if (ptr == 0 || ptr == MFAIL) {
+    return MFAIL;
+  }
+  HEAP_USED += size;
+  sbrk_top = ((char*)ptr) + size;
+  return ptr;
+}
