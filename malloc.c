@@ -866,15 +866,18 @@ extern "C" {
   maximum supported value of n differs across systems, but is in all
   cases less than the maximum representable value of a size_t.
 */
-void* constMoreCore(int);
-void* malloc_space_based(size_t);
-void* timed_malloc(size_t);
-void* no_space_malloc(size_t);
+void * constMoreCore(int);
+void * malloc_space_based(size_t);
+void * timed_malloc(size_t);
+void * no_space_malloc(size_t);
 #include <stdio.h>
-// void gc() {printf("gc\n"); fflush(stdout);}
 void gc (void);
+int go (void *);
+void * get_next_obj (void *);
+void * to_get_meta_inf (void *);
 
-DLMALLOC_EXPORT void* dlmalloc(size_t);
+
+DLMALLOC_EXPORT void * dlmalloc(size_t);
 
 /*
   free(void* p)
@@ -883,14 +886,14 @@ DLMALLOC_EXPORT void* dlmalloc(size_t);
   It has no effect if p is null. If p was not malloced or already
   freed, free(p) will by default cause the current program to abort.
 */
-DLMALLOC_EXPORT void  dlfree(void*);
+DLMALLOC_EXPORT void  dlfree(void *);
 
 /*
   calloc(size_t n_elements, size_t element_size);
   Returns a pointer to n_elements * element_size bytes, with all locations
   set to zero.
 */
-DLMALLOC_EXPORT void* dlcalloc(size_t, size_t);
+DLMALLOC_EXPORT void * dlcalloc(size_t, size_t);
 
 /*
   realloc(void* p, size_t n)
@@ -6637,3 +6640,57 @@ DLMALLOC_EXPORT void* stupid_malloc(size_t size) {
   l += size;
   return res;
 }
+
+#ifdef DEBUGE_MODE
+DLMALLOC_EXPORT int mark_after_overflow () {
+  mstate m = gm;
+  int overflow = 0;
+  if (is_initialized(m)) {
+    msegmentptr s = &m->seg;
+    while (s != 0) {
+      mchunkptr q = align_as_chunk(s->base);
+      while (segment_holds(s, q) &&
+             q < m->top && q->head != FENCEPOST_HEAD) {
+        if (flag4inuse(q) && flag8inuse(q) && is_inuse(q)) {
+            printf("mark_after_overflow:: go :: %p %p %p\n", q,
+              mem2chunk(q), chunk2mem(q)); fflush(stdout);
+            if (go(get_next_obj(to_get_meta_inf(chunk2mem(q))))) {
+              overflow = 1;
+            }
+        } else {
+          printf("mark_after_overflow:: chunk :: %p\n", q); fflush(stdout);
+        }
+        if (q < m->top && q->head != FENCEPOST_HEAD) {
+            q = next_chunk(q);
+        }
+      }
+      s = s->next;
+    }
+  }
+  return overflow;
+}
+#else
+DLMALLOC_EXPORT int mark_after_overflow () {
+  mstate m = gm;
+  int overflow = 0;
+  if (is_initialized(m)) {
+    msegmentptr s = &m->seg;
+    while (s != 0) {
+      mchunkptr q = align_as_chunk(s->base);
+      while (segment_holds(s, q) &&
+             q < m->top && q->head != FENCEPOST_HEAD) {
+        if (flag4inuse(q) && flag8inuse(q) && is_inuse(q)) {
+          if (go(get_next_obj(to_get_meta_inf(chunk2mem(q))))) {
+            overflow = 1;
+          }
+        }
+        if (q < m->top && q->head != FENCEPOST_HEAD) {
+            q = next_chunk(q);
+        }
+      }
+      s = s->next;
+    }
+  }
+  return overflow;
+}
+#endif
