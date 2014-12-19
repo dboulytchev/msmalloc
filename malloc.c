@@ -4701,6 +4701,9 @@ void* dlmalloc(size_t bytes) {
 
   postaction:
     POSTACTION(gm);
+  #ifdef DEBUGE_MODE
+    printf("malloc: %p\n", mem);
+  #endif
     return mem;
   }
   
@@ -6375,8 +6378,10 @@ void transfer_to_automatic_objects (void * p) {
           printf("%i %i \n", flag4inuse(q), flag8inuse(q));
           if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
               free(chunk2mem(q));
-              printf("free that chunk\n"); fflush(stdout);
+              printf("FREE:%p %p %p %p\n", chunk2mem(q), q, clear_flag8(q), clear_flag4(q));
               n++;
+          } else {
+            printf("malloc: not free chunk: %p; flags: %i %i %i\n", q, flag4inuse(q), !flag8inuse(q), is_inuse(q));
           }
           if (q < m->top && q->head != FENCEPOST_HEAD) {
               clear_flag8(q);
@@ -6625,9 +6630,9 @@ DLMALLOC_EXPORT void* timed_malloc(size_t size) {
 
 size_t l = 0;
 DLMALLOC_EXPORT void* stupid_malloc(size_t size) {
-  if (l > 5000000) {
-    gc();
+  if (l > 500000000) {
     l = 0;
+    gc();
   }
   void * res = dlmalloc(size);
   while (!res) {
