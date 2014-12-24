@@ -1,3 +1,7 @@
+#define ONLY_MSPACES 1
+#define MSPACES 1
+#define NO_MALLINFO 0
+
 /*
   This is a version (aka dlmalloc) of malloc/free/realloc written by
   Doug Lea and released to the public domain, as explained at
@@ -528,7 +532,7 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 #define MORECORE_CANNOT_TRIM
 #define MALLOC_ALIGNMENT ((size_t) (16))
 
-#define HAVE_MMAP 0
+#define HAVE_MMAP 1
 
 #ifndef DLMALLOC_VERSION
 #define DLMALLOC_VERSION 20806
@@ -4568,10 +4572,10 @@ static void* tmalloc_small(mstate m, size_t nb) {
 #if !ONLY_MSPACES
 
 void* dlmalloc(size_t bytes) {
-#ifdef DEBUGE_MODE
+// #ifdef DEBUGE_MODE
   printf("dlmalloc invoked %zu\n", bytes);
   fflush(stdout);
-#endif
+// #endif
   /*
      Basic algorithm:
      If a small request (< 256 bytes minus per-chunk overhead):
@@ -6316,25 +6320,24 @@ History:
 
 */
 
-long long HEAP_SIZE = -1; 
-long long HEAP_USED = 0;
-static void *sbrk_top = 0;
-void* heap_begin = 0;
-int was_gc = 0;
 
-DLMALLOC_EXPORT void print_invokation_debug(const char * format, ...) {
-  if (!invokation_debug) {
-    return;
-  } else {
-    va_list args;
-    va_start (args, format);
-    struct timeval curtime;
-    gettimeofday(&curtime, NULL);
-    fprintf(stderr, "%d sec %d usec::", curtime.tv_sec, curtime.tv_usec);
-    vfprintf (stderr, format, args);
-    va_end (args);
-  }
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 DLMALLOC_EXPORT void mark (void * pointer) {
   mchunkptr chunk = mem2chunk(pointer);
@@ -6364,338 +6367,273 @@ void transfer_to_automatic_objects (void * p) {
   set_flag4(chunk);
 }
 
-#ifdef DEBUGE_MODE
-    DLMALLOC_EXPORT size_t sweep () {
-    int n = 0;
-    mstate m = gm;
-    if (is_initialized(m)) {
-      msegmentptr s = &m->seg;
-      while (s != 0) {
-        mchunkptr q = align_as_chunk(s->base);
-        while (segment_holds(s, q) &&
-               q < m->top && q->head != FENCEPOST_HEAD) {
-          printf("chunk: %p\n", q); fflush(stdout);
-          printf("%i %i \n", flag4inuse(q), flag8inuse(q));
-          if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
-              free(chunk2mem(q));
-              printf("FREE:%p %p %p %p\n", chunk2mem(q), q, clear_flag8(q), clear_flag4(q));
-              n++;
-          } else {
-            printf("malloc: not free chunk: %p; flags: %i %i %i\n", q, flag4inuse(q), !flag8inuse(q), is_inuse(q));
-          }
-          if (q < m->top && q->head != FENCEPOST_HEAD) {
-              clear_flag8(q);
-              q = next_chunk(q);
-          }
-        }
-        s = s->next;
-      }
-    }
-    printf("Count of chunk was freed: %i\n", n); fflush(stdout);
-  }
-#else
-DLMALLOC_EXPORT size_t sweep () {
-    mstate m = gm;
-    if (is_initialized(m)) {
-      msegmentptr s = &m->seg;
-      while (s != 0) {
-        mchunkptr q = align_as_chunk(s->base);
-        while (segment_holds(s, q) &&
-               q < m->top && q->head != FENCEPOST_HEAD) {
-          if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
-              free(chunk2mem(q));
-          }
-          if (q < m->top && q->head != FENCEPOST_HEAD) {
-              clear_flag8(q);
-              q = next_chunk(q);
-          }
-        }
-        s = s->next;
-      }
-    }
-  }
-#endif
 
-int is_heap_pointer (void * p) {
-  mstate m = gm;
-  if (is_initialized(m)) {
-    return segment_holding(m, p) != 0;
-  }
+
+
+
+
+
+
+
+// test version
+// off_t heap_length;
+// mspace from_space = create_mspace(0, 0);
+// mspace to_space = create_mspace(0, 0);
+// mspace non_managed_space = create_mspace(0, 0);
+
+// void init() {
+//   from_space = create_mspace(size, 0);
+//   to_space = create_mspace(size, 0);
+//   mspace_track_large_chunks(from_space, 1);
+//   mspace_track_large_chunks(to_space, 1);
+// }
+DLMALLOC_EXPORT int mark_after_overflow () {
+  // mstate m = gm;
+  // int overflow = 0;
+  // if (is_initialized(m)) {
+  //   msegmentptr s = &m->seg;
+  //   while (s != 0) {
+  //     mchunkptr q = align_as_chunk(s->base);
+  //     while (segment_holds(s, q) &&
+  //            q < m->top && q->head != FENCEPOST_HEAD) {
+  //       if (flag4inuse(q) && flag8inuse(q) && is_inuse(q)) {
+  //         if (go(get_next_obj(to_get_meta_inf(chunk2mem(q))))) {
+  //           overflow = 1;
+  //         }
+  //       }
+  //       if (q < m->top && q->head != FENCEPOST_HEAD) {
+  //           q = next_chunk(q);
+  //       }
+  //     }
+  //     s = s->next;
+  //   }
+  // }
+  // return overflow;
+  printf("ERROR!!!! mark after overflow!");
+  exit(1);
   return 0;
 }
 
-void printDlMallocInfo (void) {
-  struct mallinfo ml = dlmallinfo();
-  printf( "dlmalloc info: \n\tnumber of free chunks: %zu \n\tmaximum total allocated space: %zu \n\ttotal allocated space: %zu \n\ttotal free space: %zu\n",
-    ml.ordblks, ml.usmblks, ml.uordblks, ml.fordblks
-    );
+static mspace from_space, to_space, non_managed_space, temp_space; // for example
+// TODO : fix : now it scans only one space
+int is_heap_pointer (void * p) {
+  int i = 0;
+
+  mstate m = (mstate)from_space;
+  if (is_initialized(m)) {
+    i = segment_holding(m, p) != 0;
+  }
+
+  if (i != 0) return i;
+
+  m = (mstate)to_space;
+  if (is_initialized(m)) {
+    return segment_holding(m, p) != 0;
+  }
+
+  return 0;
 }
 
-DLMALLOC_EXPORT void* constMoreCore(int size) {
-  if (HEAP_SIZE == -1) {
-    heap_begin = MORECORE_DEFAULT(0);
-    //need to set HEAP_SIZE
-    char* text = getenv("HEAP_SIZE");
-    // if (text) { 
-    //   HEAP_SIZE = atoll(text);
-    // } 
-    // if (HEAP_SIZE <= 0) {
-    //   //set default value
-    //   HEAP_SIZE = 4096;
-    // }
-    HEAP_SIZE = 50000000;
+void __init_spaces (void) {
+  if (!from_space) {
+    perror("initialize from_space\n");
+    from_space = create_mspace(0,0);
   }
-#ifdef DEBUGE_MODE
-  print_invokation_debug("Custom morecore invoked, size = %d\n", size);
-#endif
-  if (size == 0) {
-    return sbrk_top;
+  if (!to_space) {
+    perror("initialize to_space\n");
+    to_space = create_mspace(0,0);
   }
-  if (size < 0 || HEAP_USED + size > HEAP_SIZE) {
-  #ifdef DEBUGE_MODE
-    print_invokation_debug("baaaaaad request\n");
-    print_invokation_debug("HEAP_USED = %d, size = %d, HEAP_SIZE = %d\n", HEAP_USED, size, HEAP_SIZE);
-  #endif
-    return MFAIL;
+  if (!temp_space) {
+    perror("initialize temp_space\n");
+    temp_space = create_mspace(0,0);
   }
-  void* ptr = MORECORE_DEFAULT(size);
-  if (ptr == 0 || ptr == MFAIL) {
-    return MFAIL;
+  if (!non_managed_space) {
+    perror("initialize non_managed_space\n");
+    non_managed_space = create_mspace(0,0);
   }
-  HEAP_USED += size;
-  sbrk_top = ((char*)ptr) + size;
-  return ptr;
 }
 
-
-DLMALLOC_EXPORT void* no_space_malloc(size_t size) {
-  if (size == 0) {
-    return NULL;
+// #define mymalloc(bytes)  mspace_malloc(mymspace, bytes)
+    // int i;
+    // if (ms == from_space) i = 0;
+    // else if (ms == to_space) i = 1;
+    // else if (ms == temp_space) i = 2;
+    // else if (ms == non_managed_space) i = 3;
+    // else i = -1;
+DLMALLOC_EXPORT void * my_malloc3 (size_t bytes, int i) {
+  printf("msmalloc: my_malloc3: invoke %zu bytes, in %i space\n", bytes, i);
+  mspace ms;
+  if (i == 0) ms = from_space;
+  else if (i = 1) ms = to_space;
+  else if (i == 2) ms = temp_space;
+  else if (i == 3) ms = non_managed_space;
+  else return NULL;
+  if (!ms) {
+    ms = create_mspace(0,0);
   }
-#ifdef DEBUGE_MODE
-  print_invokation_debug("malloc_wrapped invoked, size = %d\n", size);
-  print_invokation_debug("total allocated space = %d\n", mallinfo().uordblks);
-  print_invokation_debug("total free space = %d\n", mallinfo().fordblks);
-  int space =  mallinfo().uordblks + mallinfo().fordblks;
-  print_invokation_debug("total space = %d\n", HEAP_SIZE);
-#endif
-  void* res = dlmalloc(size);
-  if (res) {
-    return res;
-  } 
-#ifdef DEBUGE_MODE
-  print_invokation_debug("gc invoked\n");
-#endif
-  gc();
-#ifdef DEBUGE_MODE
-  print_invokation_debug("gc finished\n");
-#endif
-  void* p =  dlmalloc(size);
-  
-  while (!p) {
-  #ifdef DEBUGE_MODE
-    print_invokation_debug("need to expand the heap\n");
-  #endif
-    HEAP_SIZE += HEAP_SIZE;
-  #ifdef DEBUGE_MODE
-    print_invokation_debug("HEAP SIZE FROM MALLOC = %d", HEAP_SIZE);
-  #endif
-    p = dlmalloc(size);
+  if (ms == from_space) {
+    if (!to_space) {
+      to_space = create_mspace(0,0);
+    }
+    mspace_malloc(to_space, bytes);
   }
-
-  return p; 
+  return mspace_malloc(ms, bytes);
+}
+DLMALLOC_EXPORT void * my_malloc2 (size_t bytes) {
+  my_malloc3(bytes, 0);
 }
 
-static double threshold = 0.75;
+// void * newarray;
 
-DLMALLOC_EXPORT void* space_based_malloc(size_t size) {
-    if (size == 0) {
-        return NULL;
-    }
-    struct mallinfo inf = mallinfo();
-    int allocated_size = inf.uordblks;
-  #ifdef DEBUGE_MODE
-    print_invokation_debug("malloc_wrapped invoked, size = %d\n", size);
-    print_invokation_debug("total allocated space = %d\n", allocated_size);
-    print_invokation_debug("total space = %d\n", inf.uordblks + inf.fordblks);
-    print_invokation_debug("total space = %d\n", HEAP_SIZE);
-  #endif
-    int gc_invoked = 0;
-    if (allocated_size > threshold * HEAP_SIZE && HEAP_SIZE > 0) {
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("gc invoked\n");
-      #endif
-        gc();
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("gc finished\n");
-      #endif
-        gc_invoked = 1;
-    }
-    void* res = dlmalloc(size);
-    if (!res && !gc_invoked) {
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("gc invoked\n");
-      #endif
-        gc();
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("gc finished\n");
-      #endif
-        res = dlmalloc(size);
-    }
-    while (!res) {
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("expanding heap\n");
-      #endif
-        HEAP_SIZE *= 2;
-        res = dlmalloc(size);
-    }
-    return res;
-}
-
-struct timeval prev_malloc_invokation = {-1, -1};
-struct timeval prev_prev_malloc_invokation = {-1, -1};
-//prev_malloc_invokation.tv_sec = -1; 
-//prev_malloc_invokation.tv_nsec = -1;
-
-struct timeval getDiffTime(struct timeval t, struct timeval l) {
-    struct timeval tmp;
-    if (t.tv_usec == -1 || l.tv_usec == -1) {
-      tmp.tv_sec = 0;
-      tmp.tv_usec = 0;
-    }
-    tmp.tv_sec = t.tv_sec - l.tv_sec;
-    tmp.tv_usec = t.tv_usec - l.tv_usec;
-    if (tmp.tv_usec < 0) {
-      tmp.tv_sec--;
-      tmp.tv_usec += 1000000;
-    }
-    return tmp;
-}
-DLMALLOC_EXPORT void* timed_malloc(size_t size) {
-    if (size == 0) {
-        return NULL;
-    }
-    int gc_invoked = 0;
-    struct timeval current_malloc_invokation;
-    gettimeofday(&current_malloc_invokation, NULL);
-    if (prev_prev_malloc_invokation.tv_usec == -1) {
-      prev_prev_malloc_invokation = prev_malloc_invokation;
-      prev_malloc_invokation = current_malloc_invokation;
-
-    } else {
-      struct mallinfo inf = mallinfo();
-      int allocated_size = inf.uordblks;
-    #ifdef DEBUGE_MODE
-      print_invokation_debug("malloc_wrapped invoked, size = %d\n", size);
-      print_invokation_debug("total allocated space = %d\n", allocated_size);
-      print_invokation_debug("total space = %d\n", HEAP_SIZE);
-    #endif
-      struct timeval diff1 = getDiffTime(current_malloc_invokation, prev_malloc_invokation);
-      struct timeval diff2 = getDiffTime(prev_malloc_invokation, prev_prev_malloc_invokation);
-      double T = (diff1.tv_sec*1.0 + diff1.tv_usec*1.0/1000000)/(diff2.tv_sec*1.0 + diff2.tv_usec*1.0/1000000);
-      if (T > 15) {
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("gc invoked\n");
-      #endif
-        gc();
-        gc_invoked = 1;
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("gc finished\n");  
-      #endif
-      }
-      prev_prev_malloc_invokation = prev_malloc_invokation;
-      prev_malloc_invokation = current_malloc_invokation;
-    }
-    
-    void* res = dlmalloc(size);
-    if (!res && !gc_invoked) {
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("gc invoked\n");
-      #endif
-        gc();
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("gc finished\n");
-      #endif
-        res = dlmalloc(size);
-    }
-    while (!res) {
-      #ifdef DEBUGE_MODE
-        print_invokation_debug("expanding heap\n");
-      #endif
-        HEAP_SIZE *= 2;
-        res = dlmalloc(size);
-    }
-    return res; 
-}
-
-size_t l = 0;
-DLMALLOC_EXPORT void* stupid_malloc(size_t size) {
-  if (l > 500000000) {
-    l = 0;
-    gc();
+struct TranslationTable {
+  void * prev_location;
+  void * new_location;
+  struct TranslationTable * prev;
+};
+typedef struct TranslationTable Translation_table;
+Translation_table * transition_table;
+void __add_translation_unit (void * prev_loc, void * new_loc) {
+  if (!temp_space) {
+    temp_space = create_mspace(0,0);
   }
-  void * res = dlmalloc(size);
-  while (!res) {
-  #ifdef DEBUGE_MODE
-    printf("No memory"); fflush(stdout);
-  #endif
-    gc();
-    res = dlmalloc(size);
+  Translation_table * newEl = mspace_malloc(temp_space, sizeof(Translation_table));
+  newEl->prev_location = prev_loc;
+  newEl->new_location = new_loc;
+  newEl->prev = transition_table;
+  transition_table = newEl;
+}
+void __print_translation_table (void) {
+  printf("__print_translation_table:\n"); fflush(stdout);
+  Translation_table * temp = transition_table;
+  while (temp) {
+    printf("old: %p; new: %p\n", temp->prev_location, temp->new_location); fflush(stdout);
+    temp = temp->prev;
   }
-  l += size;
-  return res;
+}
+void __destroy_transition_table (void) {
+  Translation_table * temp = transition_table;
+  while (temp) {
+    transition_table = temp->prev;
+    mspace_free(temp_space, temp);
+    temp = transition_table;
+  }
 }
 
-#ifdef DEBUGE_MODE
-DLMALLOC_EXPORT int mark_after_overflow () {
-  mstate m = gm;
-  int overflow = 0;
+DLMALLOC_EXPORT size_t sweep () {
+  mstate m = (mstate)from_space;
   if (is_initialized(m)) {
     msegmentptr s = &m->seg;
+    perror("before while 1\n");
     while (s != 0) {
       mchunkptr q = align_as_chunk(s->base);
       while (segment_holds(s, q) &&
              q < m->top && q->head != FENCEPOST_HEAD) {
-        if (flag4inuse(q) && flag8inuse(q) && is_inuse(q)) {
-            printf("mark_after_overflow:: go :: %p %p %p\n", q,
-              mem2chunk(q), chunk2mem(q)); fflush(stdout);
-            if (go(get_next_obj(to_get_meta_inf(chunk2mem(q))))) {
-              overflow = 1;
-            }
+        void * cur_chunk = chunk2mem(q);
+        if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
+            printf("chunk %p will be freed\n", q);
         } else {
-          printf("mark_after_overflow:: chunk :: %p\n", q); fflush(stdout);
-        }
-        if (q < m->top && q->head != FENCEPOST_HEAD) {
-            q = next_chunk(q);
-        }
-      }
-      s = s->next;
-    }
-  }
-  return overflow;
-}
-#else
-DLMALLOC_EXPORT int mark_after_overflow () {
-  mstate m = gm;
-  int overflow = 0;
-  if (is_initialized(m)) {
-    msegmentptr s = &m->seg;
-    while (s != 0) {
-      mchunkptr q = align_as_chunk(s->base);
-      while (segment_holds(s, q) &&
-             q < m->top && q->head != FENCEPOST_HEAD) {
-        if (flag4inuse(q) && flag8inuse(q) && is_inuse(q)) {
-          if (go(get_next_obj(to_get_meta_inf(chunk2mem(q))))) {
-            overflow = 1;
+          if (flag4inuse(q) && flag8inuse(q) && is_inuse(q)) {
+            printf("move object: size = %zu %zu\n", q->head, q->head + sizeof(struct malloc_chunk)); fflush(stdout);
+            void * new_destination = mspace_malloc(to_space, q->head + sizeof(struct malloc_chunk));
+            memcpy(new_destination, cur_chunk, q->head + sizeof(struct malloc_chunk));
+            __add_translation_unit(cur_chunk, new_destination);
+            perror("moved\n");
           }
         }
         if (q < m->top && q->head != FENCEPOST_HEAD) {
+            clear_flag8(q);
             q = next_chunk(q);
         }
       }
       s = s->next;
     }
   }
-  return overflow;
 }
-#endif
+
+
+  // MALLINFO_FIELD_TYPE arena;    /* non-mmapped space allocated from system */
+  // MALLINFO_FIELD_TYPE ordblks;  /* number of free chunks */
+  // MALLINFO_FIELD_TYPE smblks;   /* always 0 */
+  // MALLINFO_FIELD_TYPE hblks;    /* always 0 */
+  // MALLINFO_FIELD_TYPE hblkhd;   /* space in mmapped regions */
+  // MALLINFO_FIELD_TYPE usmblks;  /* maximum total allocated space */
+  // MALLINFO_FIELD_TYPE fsmblks;  /* always 0 */
+  // MALLINFO_FIELD_TYPE uordblks; /* total allocated space */
+  // MALLINFO_FIELD_TYPE fordblks; /* total free space */
+  // MALLINFO_FIELD_TYPE keepcost; /* releasable (via malloc_trim) space */
+void printDlMallocInfo (void) {
+  struct mallinfo ml;
+  if (from_space) {
+    ml = mspace_mallinfo(from_space);// dlmallinfo();
+    printf( "from_space info: \n\tnumber of free chunks: %zu \n\tmaximum total allocated space: %zu \n\ttotal allocated space: %zu \n\ttotal free space: %zu\n",
+      ml.ordblks, ml.usmblks, ml.uordblks, ml.fordblks
+      );
+  }
+  if (to_space) {
+    ml = mspace_mallinfo(to_space);// dlmallinfo();
+    printf( "to_space info: \n\tnumber of free chunks: %zu \n\tmaximum total allocated space: %zu \n\ttotal allocated space: %zu \n\ttotal free space: %zu\n",
+      ml.ordblks, ml.usmblks, ml.uordblks, ml.fordblks
+      );
+  }
+  if (temp_space) {
+    ml = mspace_mallinfo(temp_space);// dlmallinfo();
+    printf( "temp_space info: \n\tnumber of free chunks: %zu \n\tmaximum total allocated space: %zu \n\ttotal allocated space: %zu \n\ttotal free space: %zu\n",
+      ml.ordblks, ml.usmblks, ml.uordblks, ml.fordblks
+      );
+  }
+  if (non_managed_space) {
+    ml = mspace_mallinfo(non_managed_space);// dlmallinfo();
+    printf( "non_managed_space info: \n\tnumber of free chunks: %zu \n\tmaximum total allocated space: %zu \n\ttotal allocated space: %zu \n\ttotal free space: %zu\n",
+      ml.ordblks, ml.usmblks, ml.uordblks, ml.fordblks
+      );
+  }
+
+}
+
+// fix gc_ptr-s in to_space //
+void move_objects(void);
+void * m_a_s (void) {
+  perror("m_a_s -- starts");
+  destroy_mspace(to_space);
+  to_space = create_mspace(0, 0);
+  perror("m_a_s: call sweep");
+  sweep();
+printf("\n\n");
+__print_translation_table();
+printf("\n\n");
+  perror("m_a_s: sweep -- ends; call move_objects");
+  move_objects();
+  perror("m_a_s: move_objects -- ends");
+  destroy_mspace(from_space);
+  from_space = to_space;
+  // TODO: fix first argument to from_space capacity
+  to_space = create_mspace(0, 0);
+  destroy_mspace(temp_space);
+  temp_space = create_mspace(0, 0);
+  perror("m_a_s -- ends");
+  return NULL;
+
+  // mspace temp = from_space;
+  // from_space = to_space;
+  // to_space = temp;
+  // mspace temp = from_space;
+  // from_space = to_space;
+  // destroy_mspace(temp);
+  // destroy_mspace(to_space);
+  // to_space = create_mspace(0,0);
+  // sweep();
+  // __print_translation_table();
+  // move_objects();
+  // destroy_mspace(from_space);
+  // from_space = to_space;
+  // to_space = NULL;
+  // __destroy_transition_table();
+  // destroy_mspace(temp_space);
+  // printDlMallocInfo();
+  // destroy_mspace(from_space);
+  // printf("newarray = %p\n", newarray);
+  // return NULL;
+  // return transition_table->new_location;
+}
+
+
