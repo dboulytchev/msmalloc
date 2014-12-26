@@ -4462,6 +4462,7 @@ static void dispose_chunk(mstate m, mchunkptr p, size_t psize) {
 
 /* allocate a large request from the best fitting chunk in a treebin */
 static void* tmalloc_large(mstate m, size_t nb) {
+// printf("\n tmalloc_large invoke %zu bytes \n", nb);
   tchunkptr v = 0;
   size_t rsize = -nb; /* Unsigned negation */
   tchunkptr t;
@@ -4572,10 +4573,10 @@ static void* tmalloc_small(mstate m, size_t nb) {
 #if !ONLY_MSPACES
 
 void* dlmalloc(size_t bytes) {
-// #ifdef DEBUGE_MODE
+#ifdef DEBUGE_MODE
   printf("dlmalloc invoked %zu\n", bytes);
   fflush(stdout);
-// #endif
+#endif
   /*
      Basic algorithm:
      If a small request (< 256 bytes minus per-chunk overhead):
@@ -6413,10 +6414,12 @@ void __init_spaces (void) {
   if (!from_space) {
     perror("initialize from_space\n");
     from_space = create_mspace(0,0);
+    mspace_track_large_chunks(from_space, 1);
   }
   if (!to_space) {
     perror("initialize to_space\n");
     to_space = create_mspace(0,0);
+    mspace_track_large_chunks(to_space, 1);
   }
   if (!temp_space) {
     perror("initialize temp_space\n");
@@ -6452,8 +6455,6 @@ DLMALLOC_EXPORT void * my_malloc3 (size_t bytes, int i) {
 DLMALLOC_EXPORT void * my_malloc2 (size_t bytes) {
   return my_malloc3(bytes, 0);
 }
-
-// void * newarray;
 
 struct TranslationTable {
   void * prev_location;
@@ -6491,58 +6492,51 @@ void __destroy_transition_table (void) {
 
 DLMALLOC_EXPORT size_t __move_marked_objects_to_to_space (void) {
   mstate m = (mstate)from_space;
-  if (is_initialized(m)) {
-    msegmentptr s = &m->seg;
-    // perror("before while 1\n");
-    while (s != 0) {
-      mchunkptr q = align_as_chunk(s->base);
-      while (segment_holds(s, q) &&
-             q < m->top && q->head != FENCEPOST_HEAD) {
-        // perror("chunk\n");
-        void * cur_chunk = chunk2mem(q);
-        if (flag4inuse(q) && !flag8inuse(q) && is_inuse(q)) {
-            // printf("chunk %p will be freed\n", q);
-        } else {
+  if (!PREACTION(m)) {
+    check_malloc_state(m);
+    if (is_initialized(m)) {
+      msegmentptr s = &m->seg;
+      while (s != 0) {
+        mchunkptr q = align_as_chunk(s->base);
+        while (segment_holds(s, q) &&
+               q != m->top && q->head != FENCEPOST_HEAD) {
           if (flag4inuse(q) && flag8inuse(q) && is_inuse(q)) {
-// TODO How to know exact block size&!?!?!?!?!?!?
-            size_t size = chunksize(q) - overhead_for(q); // (size_t)((char*)((void *)(q->head) - 2 * sizeof(size_t)));
-            // printf("move object: size = %zu %zu\n", q->head, size); // + sizeof(struct malloc_chunk)); fflush(stdout);
-            void * new_destination = mspace_malloc(to_space, size); // + sizeof(struct malloc_chunk));
-            memcpy(new_destination, cur_chunk, size); // + sizeof(struct malloc_chunk));
-  __transfer_to_automatic_objects(new_destination);
-// printf("%p --- cur_chunk\n", cur_chunk);
+            void * cur_chunk = chunk2mem(q);
+            size_t size = chunksize(q) - overhead_for(q);
+            void * new_destination = mspace_malloc(to_space, size);
+            memcpy(new_destination, cur_chunk, size);
+            __transfer_to_automatic_objects(new_destination);
             __add_translation_unit(cur_chunk, new_destination);
-            // perror("moved\n");
-          } else {
-            // printf("STRANGE: chunk %p will be freed\n", q);
-          }
-        }
-        if (q < m->top && q->head != FENCEPOST_HEAD) {
             clear_flag8(q);
-            q = next_chunk(q);
+          }
+          q = next_chunk(q);
         }
+        s = s->next;
       }
-      s = s->next;
     }
+
+    POSTACTION(m);
   }
 }
 
 DLMALLOC_EXPORT void __clear_mark_bits (void) {
   mstate m = (mstate)from_space;
-  if (is_initialized(m)) {
-    msegmentptr s = &m->seg;
-    while (s != 0) {
-      mchunkptr q = align_as_chunk(s->base);
-      while (segment_holds(s, q) &&
-             q < m->top && q->head != FENCEPOST_HEAD) {
-        void * cur_chunk = chunk2mem(q);
-        if (q < m->top && q->head != FENCEPOST_HEAD) {
-            clear_flag8(q);
-            q = next_chunk(q);
+  if (!PREACTION(m)) {
+    check_malloc_state(m);
+    if (is_initialized(m)) {
+      msegmentptr s = &m->seg;
+      while (s != 0) {
+        mchunkptr q = align_as_chunk(s->base);
+        while (segment_holds(s, q) &&
+               q != m->top && q->head != FENCEPOST_HEAD) {
+          clear_flag8(q);
+          q = next_chunk(q);
         }
+        s = s->next;
       }
-      s = s->next;
     }
+
+    POSTACTION(m);
   }
 }
 
@@ -6578,24 +6572,26 @@ void __printDlMallocInfo (void) {
 // fix gc_ptr-s in to_space //
 void _move_objects(void);
 void * __copy_objects (void) {
-// perror("m_a_s -- starts");
+// perror("__copy_objects -- starts");
   destroy_mspace(to_space);
   to_space = create_mspace(0, 0);
-// perror("m_a_s: call __move_marked_objects_to_to_space");
+  mspace_track_large_chunks(to_space, 1);
+// perror("__copy_objects: call __move_marked_objects_to_to_space");
   __move_marked_objects_to_to_space();
 // printf("\n\n");
 // __print_translation_table();
 // printf("\n\n");
-// perror("m_a_s: __move_marked_objects_to_to_space -- ends; call move_objects");
+// perror("__copy_objects: __move_marked_objects_to_to_space -- ends; call move_objects");
   _move_objects();
-// perror("m_a_s: move_objects -- ends");
+// perror("__copy_objects: move_objects -- ends");
   destroy_mspace(from_space);
   from_space = to_space;
   // TODO: fix first argument to from_space capacity
   to_space = create_mspace(0, 0);
+  mspace_track_large_chunks(to_space, 1);
   destroy_mspace(temp_space);
   temp_space = create_mspace(0, 0);
   transition_table = NULL;
-// perror("m_a_s -- ends");
+// perror("__copy_objects -- ends");
   __clear_mark_bits();
 }
