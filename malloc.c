@@ -6336,31 +6336,43 @@ History:
 */
 
 DLMALLOC_EXPORT void __mark (void * pointer) {
+  // mchunkptr chunk = mem2chunk(pointer);
+  // set_flag8(chunk);
   mchunkptr chunk = mem2chunk(pointer);
-  set_flag8(chunk);
+  set_flag4(chunk);
 }
 
 DLMALLOC_EXPORT void __unmark (void * pointer) {
+  // mchunkptr chunk = mem2chunk(pointer);
+  // clear_flag8(chunk);
   mchunkptr chunk = mem2chunk(pointer);
-  clear_flag8(chunk);
-}
-
-DLMALLOC_EXPORT size_t __get_mark (void * pointer) {
-  mchunkptr chunk = mem2chunk(pointer);
-  return flag8inuse(chunk) != 0;
-}
-
-/// automatic object to manual
-/// bits: 1x -> 0x
-void __transfer_to_manual_object (void * p) {
-  mchunkptr chunk = mem2chunk(p);
   clear_flag4(chunk);
 }
 
-/// bits: 0x -> 1x
+DLMALLOC_EXPORT size_t __get_mark (void * pointer) {
+  // mchunkptr chunk = mem2chunk(pointer);
+  // return flag8inuse(chunk) != 0;
+  mchunkptr chunk = mem2chunk(pointer);
+  return flag4inuse(chunk) != 0;
+}
+
+static mspace from_space, to_space, non_managed_space, temp_space;
+
+/// automatic object to manual
+/// be careful: p --- might be a result of my_malloc
+void __transfer_to_manual_object (void * p) {
+  mchunkptr q = align_as_chunk(p);
+  size_t size = chunksize(q) - overhead_for(q);
+  void * new_destination = mspace_malloc(non_managed_space, size);
+  memcpy(new_destination, p, size);
+}
+
 void __transfer_to_automatic_objects (void * p) {
-  mchunkptr chunk = mem2chunk(p);
-  set_flag4(chunk);
+  mchunkptr q = align_as_chunk(p);
+  size_t size = chunksize(q) - overhead_for(q);
+  void * new_destination = mspace_malloc(from_space, size);
+  memcpy(new_destination, q, size);
+  mspace_free(non_managed_space, p);
 }
 
 DLMALLOC_EXPORT int __mark_after_overflow () {
@@ -6390,7 +6402,6 @@ DLMALLOC_EXPORT int __mark_after_overflow () {
   return 0;
 }
 
-static mspace from_space, to_space, non_managed_space, temp_space;
 // TODO : witch space to scan?
 int __is_heap_pointer (void * p) {
   int i = 0;
@@ -6500,14 +6511,13 @@ DLMALLOC_EXPORT size_t __move_marked_objects_to_to_space (void) {
         mchunkptr q = align_as_chunk(s->base);
         while (segment_holds(s, q) &&
                q != m->top && q->head != FENCEPOST_HEAD) {
-          if (flag4inuse(q) && flag8inuse(q) && is_inuse(q)) {
+          if (flag4inuse(q) && is_inuse(q)) {
             void * cur_chunk = chunk2mem(q);
             size_t size = chunksize(q) - overhead_for(q);
             void * new_destination = mspace_malloc(to_space, size);
             memcpy(new_destination, cur_chunk, size);
-            __transfer_to_automatic_objects(new_destination);
             __add_translation_unit(cur_chunk, new_destination);
-            clear_flag8(q);
+            clear_flag4(q);
           }
           q = next_chunk(q);
         }
@@ -6529,7 +6539,7 @@ DLMALLOC_EXPORT void __clear_mark_bits (void) {
         mchunkptr q = align_as_chunk(s->base);
         while (segment_holds(s, q) &&
                q != m->top && q->head != FENCEPOST_HEAD) {
-          clear_flag8(q);
+          clear_flag4(q);
           q = next_chunk(q);
         }
         s = s->next;
