@@ -6343,15 +6343,11 @@ DLMALLOC_EXPORT void __mark (void * pointer) {
 }
 
 DLMALLOC_EXPORT void __unmark (void * pointer) {
-  // mchunkptr chunk = mem2chunk(pointer);
-  // clear_flag8(chunk);
   mchunkptr chunk = mem2chunk(pointer);
   clear_flag4(chunk);
 }
 
 DLMALLOC_EXPORT size_t __get_mark (void * pointer) {
-  // mchunkptr chunk = mem2chunk(pointer);
-  // return flag8inuse(chunk) != 0;
   mchunkptr chunk = mem2chunk(pointer);
   return flag4inuse(chunk) != 0;
 }
@@ -6467,40 +6463,6 @@ DLMALLOC_EXPORT void * my_malloc2 (size_t bytes) {
   return my_malloc3(bytes, 0);
 }
 
-struct TranslationTable {
-  void * prev_location;
-  void * new_location;
-  struct TranslationTable * prev;
-};
-typedef struct TranslationTable Translation_table;
-Translation_table * transition_table;
-void __add_translation_unit (void * prev_loc, void * new_loc) {
-  if (!temp_space) {
-    temp_space = create_mspace(0,0);
-  }
-  Translation_table * newEl = mspace_malloc(temp_space, sizeof(Translation_table));
-  newEl->prev_location = prev_loc;
-  newEl->new_location = new_loc;
-  newEl->prev = transition_table;
-  transition_table = newEl;
-}
-void __print_translation_table (void) {
-  printf("__print_translation_table:\n"); fflush(stdout);
-  Translation_table * temp = transition_table;
-  while (temp) {
-    printf("old: %p; new: %p\n", temp->prev_location, temp->new_location); fflush(stdout);
-    temp = temp->prev;
-  }
-}
-void __destroy_transition_table (void) {
-  Translation_table * temp = transition_table;
-  while (temp) {
-    transition_table = temp->prev;
-    mspace_free(temp_space, temp);
-    temp = transition_table;
-  }
-}
-
 DLMALLOC_EXPORT size_t __move_marked_objects_to_to_space (void) {
   mstate m = (mstate)from_space;
   if (!PREACTION(m)) {
@@ -6515,8 +6477,10 @@ DLMALLOC_EXPORT size_t __move_marked_objects_to_to_space (void) {
             void * cur_chunk = chunk2mem(q);
             size_t size = chunksize(q) - overhead_for(q);
             void * new_destination = mspace_malloc(to_space, size);
+            // copy object from from_space to new destination in new_space
             memcpy(new_destination, cur_chunk, size);
-            __add_translation_unit(cur_chunk, new_destination);
+            // rest on old space new address
+            memcpy(cur_chunk + sizeof(void*) + sizeof(size_t) * 5, &new_destination, sizeof(size_t));
             clear_flag4(q);
           }
           q = next_chunk(q);
@@ -6589,7 +6553,6 @@ void * __copy_objects (void) {
 // perror("__copy_objects: call __move_marked_objects_to_to_space");
   __move_marked_objects_to_to_space();
 // printf("\n\n");
-// __print_translation_table();
 // printf("\n\n");
 // perror("__copy_objects: __move_marked_objects_to_to_space -- ends; call move_objects");
   _move_objects();
@@ -6597,11 +6560,11 @@ void * __copy_objects (void) {
   destroy_mspace(from_space);
   from_space = to_space;
   // TODO: fix first argument to from_space capacity
-  to_space = create_mspace(0, 0);
+  to_space = create_mspace(mspace_footprint(from_space), 0);
+  mspace_track_large_chunks(from_space, 1);
   mspace_track_large_chunks(to_space, 1);
   destroy_mspace(temp_space);
   temp_space = create_mspace(0, 0);
-  transition_table = NULL;
 // perror("__copy_objects -- ends");
   __clear_mark_bits();
 }
